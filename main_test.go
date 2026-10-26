@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-const nodeIP = "100.96.9.208"
+const proxyIP = "10.0.0.10"
 
 // serve runs the middleware and returns the request headers the next handler received.
 func serve(t *testing.T, headers http.Header) http.Header {
@@ -24,8 +24,8 @@ func serve(t *testing.T, headers http.Header) http.Header {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	req := httptest.NewRequest(http.MethodGet, "https://doodle.com/login", nil)
-	req.RemoteAddr = nodeIP + ":4711"
+	req := httptest.NewRequest(http.MethodGet, "https://example.com/login", nil)
+	req.RemoteAddr = proxyIP + ":4711"
 	req.Header = headers
 	h.ServeHTTP(httptest.NewRecorder(), req)
 	if seen == nil {
@@ -53,8 +53,8 @@ func TestOverwritesWithValidIP(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := serve(t, http.Header{
 				"Cf-Connecting-Ip": {tc.in},
-				"X-Forwarded-For":  {"203.0.113.77, 198.51.100.7", nodeIP},
-				"X-Real-Ip":        {nodeIP, "203.0.113.77"},
+				"X-Forwarded-For":  {"203.0.113.77, 198.51.100.7", proxyIP},
+				"X-Real-Ip":        {proxyIP, "203.0.113.77"},
 			})
 			expect(t, got, "X-Forwarded-For", tc.want)
 			expect(t, got, "X-Real-Ip", tc.want)
@@ -89,13 +89,13 @@ func TestLeavesRequestUnchangedWithoutOneValidIP(t *testing.T) {
 	}
 	for name, values := range cases {
 		t.Run(name, func(t *testing.T) {
-			h := http.Header{"X-Forwarded-For": {nodeIP}, "X-Real-Ip": {nodeIP}}
+			h := http.Header{"X-Forwarded-For": {proxyIP}, "X-Real-Ip": {proxyIP}}
 			if values != nil {
 				h["Cf-Connecting-Ip"] = values
 			}
 			got := serve(t, h)
-			expect(t, got, "X-Forwarded-For", nodeIP)
-			expect(t, got, "X-Real-Ip", nodeIP)
+			expect(t, got, "X-Forwarded-For", proxyIP)
+			expect(t, got, "X-Real-Ip", proxyIP)
 		})
 	}
 }
@@ -114,7 +114,7 @@ func TestOnlyTouchesClientIPHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "https://doodle.com/api", strings.NewReader("body"))
+	req := httptest.NewRequest(http.MethodPost, "https://example.com/api", strings.NewReader("body"))
 	req.Header.Set("Cf-Connecting-Ip", "198.51.100.7")
 	req.Header.Set("Authorization", "Bearer x")
 	req.Header.Set("Connection", "Upgrade")
@@ -151,14 +151,14 @@ func TestBehindReverseProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "https://doodle.com/", nil)
-	req.RemoteAddr = nodeIP + ":4711"
+	req := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
+	req.RemoteAddr = proxyIP + ":4711"
 	req.Header.Set("Cf-Connecting-Ip", "198.51.100.7")
 	req.Header.Set("X-Forwarded-For", "203.0.113.77")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	if got, want := rec.Body.String(), "198.51.100.7, "+nodeIP+"|198.51.100.7"; got != want {
+	if got, want := rec.Body.String(), "198.51.100.7, "+proxyIP+"|198.51.100.7"; got != want {
 		t.Errorf("backend saw %q, want %q", got, want)
 	}
 }
@@ -178,7 +178,7 @@ func TestConcurrentRequests(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			ip := fmt.Sprintf("198.51.100.%d", i%250)
-			req := httptest.NewRequest(http.MethodGet, "https://doodle.com/", nil)
+			req := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
 			req.Header.Set("Cf-Connecting-Ip", ip)
 			req.Header.Set("X-Want", ip)
 			h.ServeHTTP(httptest.NewRecorder(), req)
@@ -192,7 +192,7 @@ func BenchmarkServeHTTP(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodGet, "https://doodle.com/", nil)
+	req := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
 	rec := httptest.NewRecorder()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {

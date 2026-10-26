@@ -6,24 +6,55 @@
 [![Coverage Status](https://coveralls.io/repos/github/DoodleScheduling/traefik-cf-client-ip/badge.svg?branch=master)](https://coveralls.io/github/DoodleScheduling/traefik-cf-client-ip?branch=master)
 [![license](https://img.shields.io/github/license/DoodleScheduling/traefik-cf-client-ip.svg)](https://github.com/DoodleScheduling/traefik-cf-client-ip/blob/master/LICENSE)
 
-A Traefik middleware plugin that overwrites `X-Forwarded-For` and `X-Real-Ip` with the visitor IP from Cloudflare's `CF-Connecting-IP` header.
+A Traefik middleware plugin that sets `X-Forwarded-For` and `X-Real-Ip` to the visitor IP from Cloudflare's `CF-Connecting-IP` header.
 
 ## Why
 
-Behind an AWS NLB with `externalTrafficPolicy: Cluster`, kube-proxy rewrites the source address when traffic enters a node. Traefik therefore sees the node's internal IP (`100.96.x.x`) as the client, drops the incoming `X-Forwarded-For` and writes the node IP instead. Backends that identify the visitor through these headers, such as Keycloak with `KC_PROXY_HEADERS=xforwarded`, then see the node instead of the visitor.
+When Traefik runs behind Cloudflare and one or more load balancers or proxies, the address it sees for a connection is often not the visitor's. It can be a Cloudflare edge address, a load balancer address or an internal address. Traefik then writes that address into `X-Forwarded-For` and `X-Real-Ip`, and applications that rely on these headers (logging, rate limiting, auditing, login protection) see the wrong client.
 
-Cloudflare sets `CF-Connecting-IP` to the visitor's IP on every request. This middleware copies it into `X-Forwarded-For` and `X-Real-Ip`. Traefik's proxy then appends its own peer address to `X-Forwarded-For`, so the backend receives `<visitor>, <node>`.
+Cloudflare always sends the visitor's IP in `CF-Connecting-IP`. This middleware copies it into `X-Forwarded-For` and `X-Real-Ip`, so applications get the visitor IP without any change on their side.
 
 ## Behaviour
 
 | `CF-Connecting-IP` | Result |
 |---|---|
-| Exactly one valid IPv4 or IPv6 address | `X-Forwarded-For` and `X-Real-Ip` are replaced with the normalised IP; any previous values are removed |
+| Exactly one valid IPv4 or IPv6 address | `X-Forwarded-For` and `X-Real-Ip` are replaced with the normalised IP; previous values are removed |
 | Missing, empty, repeated, a list, with a port, a CIDR, or not an IP | The request continues unchanged; nothing is rejected and no empty values are written |
+
+Traefik's proxy appends the address of its own peer to `X-Forwarded-For` afterwards, so the application receives:
+
+```text
+X-Forwarded-For: 198.51.100.7, 10.0.0.10
+X-Real-Ip: 198.51.100.7
+```
 
 Only these two request headers are changed. The middleware has no options.
 
 ## Usage
+
+Enable the plugin:
+
+```yaml
+# static configuration
+experimental:
+  plugins:
+    cfClientIp:
+      moduleName: github.com/DoodleScheduling/traefik-cf-client-ip
+      version: v0.0.1
+```
+
+Define the middleware:
+
+```yaml
+# dynamic configuration (file provider)
+http:
+  middlewares:
+    cf-client-ip:
+      plugin:
+        cfClientIp: {}
+```
+
+Or, with the Kubernetes CRD provider:
 
 ```yaml
 apiVersion: traefik.io/v1alpha1
@@ -35,23 +66,28 @@ spec:
     cfClientIp: {}
 ```
 
-Put it first in the entrypoint middlewares, so later middlewares already see the visitor IP:
+Apply it to the routers that receive Cloudflare traffic, or to the whole entrypoint. Put it first, so later middlewares already see the visitor IP:
 
 ```yaml
-ports:
+# static configuration
+entryPoints:
   websecure:
+    address: ":443"
     http:
       middlewares:
-        - traefik-cf-client-ip@kubernetescrd
+        - cf-client-ip@file
 ```
 
 ## Security
 
-The middleware trusts `CF-Connecting-IP` as it arrives. It does not check where the request came from. Anything that can open a connection to the entrypoint where it runs, without going through Cloudflare, can choose the IP the backends see. That includes in-cluster pods, internal load balancers and NodePorts.
+The middleware trusts `CF-Connecting-IP` as it arrives and does not check where the request came from. Anything that can reach the entrypoint without going through Cloudflare can choose the IP your applications see.
 
-Deploy it only where the connection is authenticated as coming from Cloudflare, for example with Cloudflare Authenticated Origin Pulls (mTLS) using a zone-specific client certificate. Requests on paths that are not authenticated should not carry a usable `CF-Connecting-IP`.
+Only use it where connections are known to come from Cloudflare, for example:
 
-Traefik's access log still records the TCP peer as `ClientHost`. To log the visitor, keep the header in the access log: `accessLog.fields.headers.names.CF-Connecting-IP: keep`.
+- restrict the entrypoint to Cloudflare's IP ranges, or
+- require Cloudflare's [Authenticated Origin Pulls](https://developers.cloudflare.com/ssl/origin-configuration/authenticated-origin-pull/) client certificate (mTLS), preferably with a certificate specific to your zone.
+
+Traefik's access log keeps recording the connection's peer as `ClientHost`. To log the visitor, keep the header in the access log: `accessLog.fields.headers.names.CF-Connecting-IP: keep`.
 
 ## Development
 

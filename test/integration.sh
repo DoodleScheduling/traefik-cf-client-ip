@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs the plugin inside a real Traefik (as a local plugin, interpreted by Yaegi like in
-# production) in front of a backend that echoes the client IP headers it receives.
+# Runs the plugin inside a real Traefik binary (as a local plugin, interpreted by Yaegi)
+# in front of a backend that echoes the client IP headers it receives.
 #   TRAEFIK_VERSION=v3.7.10 ./test/integration.sh
 set -euo pipefail
 
