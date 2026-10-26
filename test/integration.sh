@@ -39,30 +39,34 @@ check() {
   fi
 }
 
+P=http://127.0.0.1:18091/
 check "without plugin, Traefik writes its peer" \
   '{"Cf-Connecting-Ip": ["198.51.100.7"], "X-Forwarded-For": ["127.0.0.1"], "X-Real-Ip": ["127.0.0.1"]}' \
   http://127.0.0.1:18093/ -H 'CF-Connecting-IP: 198.51.100.7'
-check "visitor first, Traefik appends its peer" \
+check "IPv4: visitor first, Traefik appends its peer" \
   '{"Cf-Connecting-Ip": ["198.51.100.7"], "X-Forwarded-For": ["198.51.100.7, 127.0.0.1"], "X-Real-Ip": ["198.51.100.7"]}' \
-  http://127.0.0.1:18091/ -H 'CF-Connecting-IP: 198.51.100.7'
-check "client-chosen X-Forwarded-For is replaced" \
+  $P -H 'CF-Connecting-IP: 198.51.100.7'
+check "previous X-Forwarded-For and X-Real-Ip are replaced" \
   '{"Cf-Connecting-Ip": ["198.51.100.7"], "X-Forwarded-For": ["198.51.100.7, 127.0.0.1"], "X-Real-Ip": ["198.51.100.7"]}' \
-  http://127.0.0.1:18091/ -H 'CF-Connecting-IP: 198.51.100.7' -H 'X-Forwarded-For: 203.0.113.77'
+  $P -H 'CF-Connecting-IP: 198.51.100.7' -H 'X-Forwarded-For: 203.0.113.77, 10.0.0.1' -H 'X-Real-Ip: 203.0.113.77'
 check "IPv6 and lowercase header name" \
   '{"Cf-Connecting-Ip": ["2001:db8::1"], "X-Forwarded-For": ["2001:db8::1, 127.0.0.1"], "X-Real-Ip": ["2001:db8::1"]}' \
-  http://127.0.0.1:18091/ -H 'cf-connecting-ip: 2001:db8::1'
-check "no header: unchanged" \
+  $P -H 'cf-connecting-ip: 2001:db8::1'
+check "missing header: unchanged" \
   '{"Cf-Connecting-Ip": null, "X-Forwarded-For": ["127.0.0.1"], "X-Real-Ip": ["127.0.0.1"]}' \
-  http://127.0.0.1:18091/
+  $P
+check "empty header: unchanged" \
+  '{"Cf-Connecting-Ip": [""], "X-Forwarded-For": ["127.0.0.1"], "X-Real-Ip": ["127.0.0.1"]}' \
+  $P -H 'CF-Connecting-IP;'
 check "invalid header: unchanged" \
   '{"Cf-Connecting-Ip": ["nope"], "X-Forwarded-For": ["127.0.0.1"], "X-Real-Ip": ["127.0.0.1"]}' \
-  http://127.0.0.1:18091/ -H 'CF-Connecting-IP: nope'
-check "repeated header: unchanged" \
+  $P -H 'CF-Connecting-IP: nope'
+check "list in one header: unchanged" \
+  '{"Cf-Connecting-Ip": ["198.51.100.7, 203.0.113.1"], "X-Forwarded-For": ["127.0.0.1"], "X-Real-Ip": ["127.0.0.1"]}' \
+  $P -H 'CF-Connecting-IP: 198.51.100.7, 203.0.113.1'
+check "duplicated header: unchanged" \
   '{"Cf-Connecting-Ip": ["198.51.100.7", "203.0.113.1"], "X-Forwarded-For": ["127.0.0.1"], "X-Real-Ip": ["127.0.0.1"]}' \
-  http://127.0.0.1:18091/ -H 'CF-Connecting-IP: 198.51.100.7' -H 'CF-Connecting-IP: 203.0.113.1'
-check "untrusted peer: header removed" \
-  '{"Cf-Connecting-Ip": null, "X-Forwarded-For": ["127.0.0.1"], "X-Real-Ip": ["127.0.0.1"]}' \
-  http://127.0.0.1:18092/ -H 'CF-Connecting-IP: 198.51.100.7'
+  $P -H 'CF-Connecting-IP: 198.51.100.7' -H 'CF-Connecting-IP: 203.0.113.1'
 
 if grep -q -i -E 'panic|level=error|ERR' "$WORK/traefik.log"; then
   echo "FAIL Traefik log has errors:"; grep -i -E 'panic|level=error|ERR' "$WORK/traefik.log"; failed=1
