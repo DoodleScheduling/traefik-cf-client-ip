@@ -1,0 +1,33 @@
+name: scan
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+    - cron: '18 10 * * 3'
+
+permissions: {}
+
+jobs:
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # for actions/checkout to fetch code
+      security-events: write # for codeQL to write security events
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@f0a12816612c7306b485a22cb164feb43c6df818 # codeql-bundle-20221020
+        with:
+          languages: go
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@f0a12816612c7306b485a22cb164feb43c6df818 # codeql-bundle-20221020
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@f0a12816612c7306b485a22cb164feb43c6df818 # codeql-bundle-20221020

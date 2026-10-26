@@ -1,0 +1,19 @@
+http:
+  middlewares:
+    cf-client-ip:
+      plugin:
+        cfClientIp: {}
+    cf-client-ip-restricted:
+      plugin:
+        cfClientIp:
+          trustedIPs: ["100.96.0.0/11"]
+  routers:
+    echo:
+      rule: PathPrefix(`/`)
+      entryPoints: [open, restricted, plain]
+      service: echo
+  services:
+    echo:
+      loadBalancer:
+        servers:
+          - url: http://127.0.0.1:18090
