@@ -2,10 +2,4 @@ displayName: Cloudflare client IP
 type: middleware
 import: github.com/DoodleScheduling/traefik-cf-client-ip
 summary: 'Sets X-Forwarded-For and X-Real-Ip from the CF-Connecting-IP header set by Cloudflare'
-testData:
-  sourceHeader: 'CF-Connecting-IP'
-  targetHeaders:
-    - 'X-Forwarded-For'
-    - 'X-Real-Ip'
-  trustedIPs:
-    - '100.96.0.0/11'
+testData: {}

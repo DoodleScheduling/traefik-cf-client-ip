@@ -1,14 +1,10 @@
 log:
   level: INFO
 entryPoints:
-  open:
+  withplugin:
     address: "127.0.0.1:18091"
     http:
       middlewares: [cf-client-ip@file]
-  restricted:
-    address: "127.0.0.1:18092"
-    http:
-      middlewares: [cf-client-ip-restricted@file]
   plain:
     address: "127.0.0.1:18093"
 experimental:
